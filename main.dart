@@ -44,6 +44,13 @@ Color cardColor(BuildContext c) => Theme.of(c).colorScheme.surface;
 Color subText(BuildContext c) =>
     Theme.of(c).brightness == Brightness.dark ? Colors.white54 : Colors.black45;
 
+String contactName(Contact c) {
+  if (c.displayName.trim().isNotEmpty) return c.displayName.trim();
+  if (c.phones.isNotEmpty) return c.phones.first.number;
+  if (c.emails.isNotEmpty) return c.emails.first.address;
+  return '';
+}
+
 Future<void> placeCall(BuildContext context, String number) async {
   if (number.trim().isEmpty) return;
   if (await Permission.phone.request().isGranted) {
@@ -72,8 +79,11 @@ class Avatar extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(color: c.withOpacity(.18), shape: BoxShape.circle),
-      child: Text(name.isEmpty ? '#' : name.characters.first.toUpperCase(),
-          style: TextStyle(color: c, fontSize: size * .42, fontWeight: FontWeight.w500)),
+      child: (name.isNotEmpty &&
+              RegExp(r'\p{L}', unicode: true).hasMatch(name.characters.first))
+          ? Text(name.characters.first.toUpperCase(),
+              style: TextStyle(color: c, fontSize: size * .42, fontWeight: FontWeight.w500))
+          : Icon(Icons.person, color: c, size: size * .55),
     ));
   }
 }
@@ -236,6 +246,49 @@ class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
   bool _keypad = false;
   String _num = '';
+  static const _ch = MethodChannel('dialer');
+  bool _isDefault = true; // banner stays hidden until we know
+
+  @override
+  void initState() {
+    super.initState();
+    _ch.setMethodCallHandler((call) async {
+      if (call.method == 'dial' && mounted) {
+        setState(() {
+          _num = call.arguments as String;
+          _keypad = true;
+        });
+      }
+    });
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _checkDefault();
+    try {
+      final n = await _ch.invokeMethod<String>('initialNumber');
+      if (n != null && n.isNotEmpty && mounted) {
+        setState(() {
+          _num = n;
+          _keypad = true;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _checkDefault() async {
+    try {
+      final v = await _ch.invokeMethod<bool>('isDefault');
+      if (mounted) setState(() => _isDefault = v ?? false);
+    } catch (_) {}
+  }
+
+  Future<void> _makeDefault() async {
+    try {
+      await _ch.invokeMethod<bool>('requestDefault');
+    } catch (_) {}
+    _checkDefault();
+  }
 
   Widget _tabPage(int i, Widget page) {
     final active = _tab == i;
@@ -264,6 +317,18 @@ class _HomeShellState extends State<HomeShell> {
               _tabPage(1, const ContactsPage()),
             ]),
           ),
+          if (!_isDefault)
+            Container(
+              width: double.infinity,
+              color: cardColor(context),
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+              child: Row(children: [
+                const Expanded(
+                    child: Text('Make this your default Phone app to handle calls',
+                        style: TextStyle(fontSize: 13))),
+                TextButton(onPressed: _makeDefault, child: const Text('Set')),
+              ]),
+            ),
           AnimatedSize(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutCubic,
@@ -608,8 +673,10 @@ class _ContactsPageState extends State<ContactsPage> {
       setState(() => _denied = true);
       return;
     }
-    final list = await FlutterContacts.getContacts(withProperties: true);
-    list.sort((a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
+    final list = (await FlutterContacts.getContacts(withProperties: true))
+        .where((c) => contactName(c).isNotEmpty)
+        .toList();
+    list.sort((a, b) => contactName(a).toLowerCase().compareTo(contactName(b).toLowerCase()));
     setState(() {
       _denied = false;
       _all = list;
@@ -626,7 +693,8 @@ class _ContactsPageState extends State<ContactsPage> {
     // Group by first letter
     final groups = <String, List<Contact>>{};
     for (final c in shown) {
-      final l = c.displayName.isEmpty ? '#' : c.displayName.characters.first.toUpperCase();
+      final nm = contactName(c);
+      final l = nm.isEmpty ? '#' : nm.characters.first.toUpperCase();
       groups.putIfAbsent(RegExp(r'[A-Z]').hasMatch(l) ? l : '#', () => []).add(c);
     }
     return CustomScrollView(slivers: [
@@ -667,12 +735,12 @@ class _ContactsPageState extends State<ContactsPage> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       child: Row(children: [
-                        Hero(tag: 'avatar-${c.id}', child: Avatar(c.displayName)),
+                        Hero(tag: 'avatar-${c.id}', child: Avatar(contactName(c))),
                         const SizedBox(width: 16),
                         Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(c.displayName, style: const TextStyle(fontSize: 17)),
-                            if (c.phones.isNotEmpty)
+                            Text(contactName(c), style: const TextStyle(fontSize: 17)),
+                            if (c.phones.isNotEmpty && contactName(c) != c.phones.first.number)
                               Text(c.phones.first.number,
                                   style: TextStyle(fontSize: 13, color: subText(context))),
                           ]),
@@ -728,11 +796,11 @@ class ContactDetail extends StatelessWidget {
         Center(
             child: Hero(
                 tag: 'avatar-${contact.id}',
-                child: Avatar(contact.displayName, size: 88))),
+                child: Avatar(contactName(contact), size: 88))),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Center(
-              child: Text(contact.displayName,
+              child: Text(contactName(contact),
                   style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600))),
         ),
         Padding(
