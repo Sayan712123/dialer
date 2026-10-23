@@ -39,6 +39,25 @@ jobs:
           s = s.replace('<queries>', intents, 1)
           open(p, 'w').write(s)
           PY
+      - name: Enable core library desugaring (needed by call_log)
+        run: |
+          python3 - <<'PY'
+          import os
+          d = 'app/android/app'
+          kts, gr = d + '/build.gradle.kts', d + '/build.gradle'
+          if os.path.exists(kts):
+              s = open(kts).read()
+              assert 'compileOptions {' in s
+              s = s.replace('compileOptions {', 'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
+              s += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
+              open(kts, 'w').write(s)
+          else:
+              s = open(gr).read()
+              assert 'compileOptions {' in s
+              s = s.replace('compileOptions {', 'compileOptions {\n        coreLibraryDesugaringEnabled true', 1)
+              s += "\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
+              open(gr, 'w').write(s)
+          PY
       - name: Build release APK
         working-directory: app
         run: |
