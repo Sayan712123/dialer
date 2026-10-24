@@ -60,7 +60,18 @@ assert '<application' in s and '</activity>' in s and '<queries>' in s
 s = s.replace('<application', perms + '<application', 1)
 s = s.replace('</activity>', dial_filters + '</activity>' + components, 1)
 s = s.replace('<queries>', queries, 1)
+s = s.replace('android:label="contacts_dialer"', 'android:label="Phone"')
 open(p, 'w').write(s)
+
+# ---------------- Launcher icon (original Xiaomi phone icon) ----------------
+if os.path.exists('icon.png'):
+    from PIL import Image
+    im = Image.open('icon.png').convert('RGBA')
+    for dens, px in {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi': 192}.items():
+        out = 'app/android/app/src/main/res/mipmap-' + dens
+        os.makedirs(out, exist_ok=True)
+        im.resize((px, px), Image.LANCZOS).save(out + '/ic_launcher.png')
+    print('launcher icon written')
 
 # ---------------- Gradle ----------------
 d = 'app/android/app'
