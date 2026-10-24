@@ -20,18 +20,4 @@ jobs:
           flutter create --org com.example --project-name contacts_dialer --platforms=android app
           cp pubspec.yaml app/pubspec.yaml
           cp main.dart app/lib/main.dart
-          K=app/android/app/src/main/kotlin/com/example/contacts_dialer
-          mkdir -p $K
-          cp MainActivity.kt Calls.kt $K/
-          ls $K
-      - name: Patch Android manifest and Gradle
-        run: python3 patch_android.py
-      - name: Build release APK
-        working-directory: app
-        run: |
-          flutter pub get
-          flutter build apk --release
-      - uses: actions/upload-artifact@v4
-        with:
-          name: contacts-dialer-apk
-          path: app/build/app/outputs/flutter-apk/app-release.apk
+          K=app/android/app/src/main/kotlin/com/example/contacts_d
